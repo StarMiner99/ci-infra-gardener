@@ -14,3 +14,4 @@ presubmits:
         args:
             - --min-admins=5
             - --config-path=config/org.yaml
+            - --required-admins=gardener-ci-robot
