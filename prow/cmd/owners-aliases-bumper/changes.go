@@ -22,7 +22,13 @@ type change struct {
 	remove sets.Set[string]
 }
 
-func calculateAliasChanges(ghClient github.Client, localAliases *fullOrgAliases, orgName, repoName string) (map[string]change, bool) {
+// fileGetter fetches a file from a repository. It is the subset of
+// github.Client used by calculateAliasChanges.
+type fileGetter interface {
+	GetFile(org, repo, filepath, commit string) ([]byte, error)
+}
+
+func calculateAliasChanges(ghClient fileGetter, localAliases *fullOrgAliases, orgName, repoName string) (map[string]change, bool) {
 	// get the aliases currently in the repo:
 	raw, err := ghClient.GetFile(orgName, repoName, "OWNERS_ALIASES", "") // empty commit ID for latest commit on default branch
 	var notFoundErr *github.FileNotFound

@@ -79,7 +79,15 @@ func commitAndPush(repoClient git.RepoClient, orgName, repoName string) error {
 	return nil
 }
 
-func findOrCreatePR(ghClient github.Client, orgName, repoName string) (int, error) {
+// prClient is the subset of github.Client used by findOrCreatePR.
+type prClient interface {
+	GetRepo(owner, name string) (github.FullRepo, error)
+	GetPullRequests(org, repo string) ([]github.PullRequest, error)
+	CreatePullRequest(org, repo, title, body, head, base string, canModify bool) (int, error)
+	ClosePullRequest(org, repo string, number int) error
+}
+
+func findOrCreatePR(ghClient prClient, orgName, repoName string) (int, error) {
 	repoInfo, err := ghClient.GetRepo(orgName, repoName)
 
 	if err != nil {
