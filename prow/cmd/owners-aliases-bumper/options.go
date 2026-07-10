@@ -53,7 +53,7 @@ func (o *options) parseArgs(flags *flag.FlagSet, args []string) error {
 
 	// check if args provide valid configuration
 	if o.peribolosConfig == "" {
-		return errors.New("--peribolos-conf needs to be set.")
+		return errors.New("--peribolos-conf needs to be set")
 	}
 
 	return nil

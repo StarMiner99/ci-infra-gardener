@@ -12,7 +12,7 @@ func main() {
 
 	o := parseOptions()
 
-	cfg := NewFullOrgAliases()
+	cfg := newFullOrgAliases()
 
 	orgConfig := parseOrgConfig(o.peribolosConfig)
 
@@ -30,7 +30,7 @@ func main() {
 
 	// build our available aliases from the teams information we have
 	for orgName, orgConfig := range orgConfig.Orgs {
-		addMembersFromTeams(cfg.GetConfig(orgName), orgConfig.Teams, "")
+		addMembersFromTeams(cfg.getConfig(orgName), orgConfig.Teams, "")
 	}
 
 	// remove repos that should be skipped
@@ -61,7 +61,7 @@ func main() {
 			}
 
 			// commit and push changes
-			if err := commitAndPush(ghClient, repoClient, orgName, repoName); err != nil {
+			if err := commitAndPush(repoClient, orgName, repoName); err != nil {
 				logrus.WithError(err).Errorf("Commit and push failed repo: %s/%s", orgName, repoName)
 				continue
 			}

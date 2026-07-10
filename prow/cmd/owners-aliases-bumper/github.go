@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 
@@ -57,19 +56,24 @@ func forkAndCheckoutRepo(ghClient github.Client, gitClient git.ClientFactory, or
 		return nil, err
 	}
 
-	r.Checkout(repoInfo.DefaultBranch)
-	r.CheckoutNewBranch(prBranch)
+	if err := r.Checkout(repoInfo.DefaultBranch); err != nil {
+		return nil, fmt.Errorf("unable to checkout branch %s of repo %s/%s: %w", repoInfo.DefaultBranch, orgName, repoName, err)
+	}
+
+	if err := r.CheckoutNewBranch(prBranch); err != nil {
+		return nil, fmt.Errorf("unable to checkout new branch %s of repo %s/%s: %w", prBranch, orgName, repoName, err)
+	}
 
 	return r, nil
 }
 
-func commitAndPush(ghClient github.Client, repoClient git.RepoClient, orgName, repoName string) error {
+func commitAndPush(repoClient git.RepoClient, orgName, repoName string) error {
 	if err := repoClient.Commit(commitTitle, commitBody); err != nil {
-		return errors.Join(err, fmt.Errorf("Failed to commit to repo %s/%s", orgName, repoName))
+		return fmt.Errorf("failed to commit to repo %s/%s: %w", orgName, repoName, err)
 	}
 
 	if err := repoClient.PushToCentral(prBranch, true); err != nil {
-		return errors.Join(err, fmt.Errorf("Failed to push to repo %s/%s", orgName, repoName))
+		return fmt.Errorf("failed to push to repo %s/%s: %w", orgName, repoName, err)
 	}
 
 	return nil
@@ -79,13 +83,13 @@ func findOrCreatePR(ghClient github.Client, orgName, repoName string) (int, erro
 	repoInfo, err := ghClient.GetRepo(orgName, repoName)
 
 	if err != nil {
-		return 0, errors.Join(err, fmt.Errorf("Failed to get Repo %s/%s", orgName, repoName))
+		return 0, fmt.Errorf("failed to get Repo %s/%s: %w", orgName, repoName, err)
 	}
 
 	prs, err := ghClient.GetPullRequests(orgName, repoName)
 
 	if err != nil {
-		return 0, errors.Join(err, fmt.Errorf("Failed to get PRs for repo %s/%s", orgName, repoName))
+		return 0, fmt.Errorf("failed to get PRs for repo %s/%s: %w", orgName, repoName, err)
 	}
 
 	// filter all prs that are not open and all prs that do not match our branch
@@ -98,7 +102,7 @@ func findOrCreatePR(ghClient github.Client, orgName, repoName string) (int, erro
 	if len(prs) < 1 {
 		prNum, err = ghClient.CreatePullRequest(orgName, repoName, prTitle, prBody, prBranch, repoInfo.DefaultBranch, false)
 		if err != nil {
-			return 0, errors.Join(err, fmt.Errorf("Failed to create PR for repo %s/%s", orgName, repoName))
+			return 0, fmt.Errorf("failed to create PR for repo %s/%s: %w", orgName, repoName, err)
 		}
 	}
 	// one open PR
@@ -111,7 +115,7 @@ func findOrCreatePR(ghClient github.Client, orgName, repoName string) (int, erro
 		// close all other PRs, someone must have opened a PR manually
 		for _, pr := range prs[1:] {
 			if err := ghClient.ClosePullRequest(orgName, repoName, pr.Number); err != nil {
-				logrus.WithError(err).Warnf("Failed closing PR %d from repo %s/%s", pr.Number, orgName, repoName)
+				logrus.WithError(err).Warnf("failed closing PR %d from repo %s/%s", pr.Number, orgName, repoName)
 			}
 		}
 	}

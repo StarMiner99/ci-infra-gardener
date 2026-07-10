@@ -7,23 +7,23 @@ import (
 	"sigs.k8s.io/prow/pkg/repoowners"
 )
 
-// holds alias -> member map per Org
-type OrgAliases repoowners.RepoAliases
+// orgAliases holds an alias -> member map for a single org.
+type orgAliases repoowners.RepoAliases
 
-func (orgAliases OrgAliases) addMember(aliasName string, member string) {
-	aliasMembers, exists := orgAliases[aliasName]
+func (a orgAliases) addMember(aliasName string, member string) {
+	aliasMembers, exists := a[aliasName]
 
 	if !exists {
 		aliasMembers = sets.New(member)
-		orgAliases[aliasName] = aliasMembers
+		a[aliasName] = aliasMembers
 		return
 	}
 
 	aliasMembers.Insert(member)
 }
 
-func (orgAliases OrgAliases) getMembers(aliasName string) sets.Set[string] {
-	aliasMembers, exists := orgAliases[aliasName]
+func (a orgAliases) getMembers(aliasName string) sets.Set[string] {
+	aliasMembers, exists := a[aliasName]
 
 	if !exists {
 		return nil // return nil if this alias does not exist
@@ -32,29 +32,29 @@ func (orgAliases OrgAliases) getMembers(aliasName string) sets.Set[string] {
 	return aliasMembers
 }
 
-// aliases mapped per org
-type FullOrgAliases struct {
-	aliases map[string]OrgAliases // OrgAliases is map
+// fullOrgAliases holds the aliases mapped per org.
+type fullOrgAliases struct {
+	aliases map[string]orgAliases
 }
 
-func NewFullOrgAliases() *FullOrgAliases {
-	return &FullOrgAliases{
-		aliases: make(map[string]OrgAliases),
+func newFullOrgAliases() *fullOrgAliases {
+	return &fullOrgAliases{
+		aliases: make(map[string]orgAliases),
 	}
 }
 
-func (aliases *FullOrgAliases) GetConfig(org string) OrgAliases {
-	orgAliases, exists := aliases.aliases[org]
+func (f *fullOrgAliases) getConfig(org string) orgAliases {
+	a, exists := f.aliases[org]
 
 	if !exists {
-		orgAliases = make(OrgAliases)
-		aliases.aliases[org] = orgAliases
+		a = make(orgAliases)
+		f.aliases[org] = a
 	}
 
-	return orgAliases
+	return a
 }
 
-func addMembersFromTeams(aliases OrgAliases, teams map[string]org.Team, aliasPrefix string) {
+func addMembersFromTeams(aliases orgAliases, teams map[string]org.Team, aliasPrefix string) {
 	for teamName, team := range teams {
 		alias := github.NormLogin(aliasPrefix + teamName)
 		for _, member := range team.Members {
