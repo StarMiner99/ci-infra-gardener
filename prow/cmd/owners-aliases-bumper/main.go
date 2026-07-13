@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/prow/pkg/logrusutil"
 )
 
@@ -12,9 +13,17 @@ func main() {
 
 	o := parseOptions()
 
+	if o.applyChanges {
+		logrus.Info("Running in APPLY mode (--confirm set): changes will be pushed and PRs opened")
+	} else {
+		logrus.Info("Running in DRY-RUN mode (no --confirm): no forks, commits or PRs will be created")
+	}
+
 	cfg := newFullOrgAliases()
 
+	logrus.Infof("Reading Peribolos config from %s", o.peribolosConfig)
 	orgConfig := parseOrgConfig(o.peribolosConfig)
+	logrus.Infof("Parsed Peribolos config: %d org(s) defined", len(orgConfig.Orgs))
 
 	ghClient, err := o.ghOpts.GitHubClient(!o.applyChanges)
 
@@ -30,7 +39,12 @@ func main() {
 
 	// build our available aliases from the teams information we have
 	for orgName, orgConfig := range orgConfig.Orgs {
-		addMembersFromTeams(cfg.getConfig(orgName), orgConfig.Teams, "")
+		aliases := cfg.getConfig(orgName)
+		addMembersFromTeams(aliases, orgConfig.Teams, "")
+		logrus.Infof("Built local aliases for org %q from %d team(s): %d alias(es) available", orgName, len(orgConfig.Teams), len(aliases))
+		for alias := range aliases {
+			logrus.Debugf("  [%s] alias %q: %v", orgName, alias, sets.List(aliases.getMembers(alias)))
+		}
 	}
 
 	// remove repos that should be skipped
@@ -38,10 +52,26 @@ func main() {
 
 	// manage every repo defined in peribolos conf
 	for orgName, orgConfig := range orgConfig.Orgs {
+		logrus.Infof("Processing org %q with %d repo(s)", orgName, len(orgConfig.Repos))
 		for repoName := range orgConfig.Repos {
+			log := logrus.WithField("repo", orgName+"/"+repoName)
+			log.Debug("Calculating alias changes")
 			changes, changed := calculateAliasChanges(ghClient, cfg, orgName, repoName)
 			if changes == nil || !changed {
+				log.Info("No applicable changes, skipping")
 				continue // skip change if not applicable
+			}
+			log.Infof("Found changes for %d alias(es)", len(changes))
+			for alias, c := range changes {
+				if c.add.Len() == 0 && c.remove.Len() == 0 {
+					continue
+				}
+				log.Infof("  alias %q: add=%v remove=%v", alias, sets.List(c.add), sets.List(c.remove))
+			}
+
+			if !o.applyChanges {
+				log.Info("Dry-run: skipping fork/commit/PR")
+				continue
 			}
 
 			// download repo

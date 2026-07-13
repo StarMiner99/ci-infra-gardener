@@ -29,7 +29,10 @@ type fileGetter interface {
 }
 
 func calculateAliasChanges(ghClient fileGetter, localAliases *fullOrgAliases, orgName, repoName string) (map[string]change, bool) {
+	log := logrus.WithField("repo", orgName+"/"+repoName)
+
 	// get the aliases currently in the repo:
+	log.Debug("Fetching OWNERS_ALIASES from repo default branch")
 	raw, err := ghClient.GetFile(orgName, repoName, "OWNERS_ALIASES", "") // empty commit ID for latest commit on default branch
 	var notFoundErr *github.FileNotFound
 
@@ -41,12 +44,14 @@ func calculateAliasChanges(ghClient fileGetter, localAliases *fullOrgAliases, or
 		logrus.WithError(err).Errorf("Failed to get OWNER_ALIASES from %s/%s", orgName, repoName)
 		return nil, false // skip gracefully if failed
 	}
+	log.Debugf("Fetched OWNERS_ALIASES (%d bytes)", len(raw))
 
 	aliases, err := repoowners.ParseAliasesConfig(raw)
 	if err != nil {
 		logrus.WithError(err).Errorf("Failed to parse OWNER_ALIASES from %s/%s", orgName, repoName)
 		return nil, false // skip
 	}
+	log.Debugf("Parsed %d alias(es) from repo OWNERS_ALIASES", len(aliases))
 
 	changes := make(map[string]change)
 	changed := false
@@ -56,6 +61,7 @@ func calculateAliasChanges(ghClient fileGetter, localAliases *fullOrgAliases, or
 		localMembers := localAliases.getConfig(orgName).getMembers(alias)
 
 		if localMembers == nil {
+			log.Debugf("Alias %q not present in local config, skipping", alias)
 			continue // alias does not exist in our local config, skip
 		}
 
@@ -63,6 +69,10 @@ func calculateAliasChanges(ghClient fileGetter, localAliases *fullOrgAliases, or
 		toBeDeleted := members.Difference(localMembers)
 		if toBeAdded.Len() != 0 || toBeDeleted.Len() != 0 {
 			changed = true
+			log.Debugf("Alias %q differs: repo=%v local=%v -> add=%v remove=%v",
+				alias, sets.List(members), sets.List(localMembers), sets.List(toBeAdded), sets.List(toBeDeleted))
+		} else {
+			log.Debugf("Alias %q already in sync (%d member(s))", alias, members.Len())
 		}
 
 		changes[alias] = change{
@@ -71,6 +81,7 @@ func calculateAliasChanges(ghClient fileGetter, localAliases *fullOrgAliases, or
 		}
 	}
 
+	log.Debugf("Comparison done: %d alias(es) tracked, changed=%t", len(changes), changed)
 	return changes, changed
 }
 
