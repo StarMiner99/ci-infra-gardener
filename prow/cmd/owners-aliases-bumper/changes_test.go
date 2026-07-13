@@ -13,6 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"k8s.io/apimachinery/pkg/util/sets"
+	"sigs.k8s.io/prow/pkg/config/org"
 	"sigs.k8s.io/prow/pkg/github"
 
 	yaml4 "go.yaml.in/yaml/v4"
@@ -99,6 +100,60 @@ var _ = Describe("Changes", func() {
 			Expect(changed).To(BeFalse())
 			Expect(changes).ToNot(HaveKey("unknown-team"))
 		})
+
+		It("reports no change for an org that has no local teams", func() {
+			// getConfig lazily creates an empty config for the org, so every
+			// alias in the repo is skipped and nothing is reported as changed.
+			gh := fakeFileGetter{content: []byte("aliases:\n  team-a:\n  - alice\n")}
+			changes, changed := calculateAliasChanges(gh, newFullOrgAliases(), "org-with-no-teams", "repo")
+			Expect(changed).To(BeFalse())
+			Expect(changes).To(BeEmpty())
+		})
+
+		It("does not report a change when only casing/@ differ (normalization regression guard)", func() {
+			// This is the end-to-end guard for the normalization contract: the
+			// repo file uses mixed case and a leading @, while the local config
+			// is built via addMembersFromTeams (which normalizes via NormLogin).
+			// If either side stopped normalizing, this would report a spurious
+			// remove+add and churn the file on every run.
+			gh := fakeFileGetter{content: []byte("aliases:\n  Team-A:\n  - Alice\n  - \"@Bob\"\n")}
+
+			f := newFullOrgAliases()
+			addMembersFromTeams(f.getConfig("gardener"), map[string]org.Team{
+				"Team-A": {
+					Members:     []string{"Alice"},
+					Maintainers: []string{"@Bob"},
+				},
+			}, "")
+
+			changes, changed := calculateAliasChanges(gh, f, "gardener", "ci-infra")
+			Expect(changed).To(BeFalse(), "casing/@ differences must not be treated as changes")
+			Expect(changes["team-a"].add).To(BeEmpty())
+			Expect(changes["team-a"].remove).To(BeEmpty())
+		})
+
+		It("aggregates changes across multiple aliases in one repo", func() {
+			gh := fakeFileGetter{content: []byte(
+				"aliases:\n" +
+					"  team-a:\n  - alice\n  - carol\n" + // differs: add bob, remove carol
+					"  team-b:\n  - dave\n" + // matches exactly
+					"  team-c:\n  - eve\n", // not in local config -> skipped
+			)}
+
+			f := newFullOrgAliases()
+			cfg := f.getConfig("gardener")
+			cfg.addMember("team-a", "alice")
+			cfg.addMember("team-a", "bob")
+			cfg.addMember("team-b", "dave")
+
+			changes, changed := calculateAliasChanges(gh, f, "gardener", "ci-infra")
+			Expect(changed).To(BeTrue())
+			Expect(changes["team-a"].add).To(Equal(sets.New("bob")))
+			Expect(changes["team-a"].remove).To(Equal(sets.New("carol")))
+			Expect(changes["team-b"].add).To(BeEmpty())
+			Expect(changes["team-b"].remove).To(BeEmpty())
+			Expect(changes).ToNot(HaveKey("team-c"))
+		})
 	})
 
 	Describe("#writeChanges", func() {
@@ -159,6 +214,30 @@ var _ = Describe("Changes", func() {
 		It("returns an error when the file does not exist", func() {
 			err := writeChanges(filepath.Join(GinkgoT().TempDir(), "does-not-exist"), map[string]change{})
 			Expect(err).To(HaveOccurred())
+		})
+
+		It("returns an error for the unsupported {alias: {u1, u2}} map notation", func() {
+			// The ownersAliasesFile type only models the string-array syntax;
+			// a mapping value must be rejected rather than silently mangled.
+			writeFile("aliases:\n  team-a:\n    alice: {}\n    bob: {}\n")
+			err := writeChanges(path, map[string]change{
+				"team-a": {add: sets.New("carol"), remove: sets.New[string]()},
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("failed parsing file")))
+		})
+
+		It("appends a duplicate when asked to add a member that already exists", func() {
+			// Documents current behavior: writeChanges does not dedupe on add.
+			// In practice calculateAliasChanges only ever asks to add members
+			// that are absent (set difference), so this path is not hit in the
+			// normal flow, but the function itself does not guard against it.
+			writeFile("aliases:\n  team-a:\n  - alice\n")
+			err := writeChanges(path, map[string]change{
+				"team-a": {add: sets.New("alice"), remove: sets.New[string]()},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(readBack()["team-a"]).To(Equal([]string{"alice", "alice"}))
 		})
 	})
 
