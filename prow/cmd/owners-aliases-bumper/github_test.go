@@ -25,20 +25,20 @@ type fakePRClient struct {
 	closed       []int
 }
 
-func (f *fakePRClient) GetRepo(owner, name string) (github.FullRepo, error) {
+func (f *fakePRClient) GetRepo(_, _ string) (github.FullRepo, error) {
 	return f.repo, f.getRepoErr
 }
 
-func (f *fakePRClient) GetPullRequests(org, repo string) ([]github.PullRequest, error) {
+func (f *fakePRClient) GetPullRequests(_, _ string) ([]github.PullRequest, error) {
 	return f.prs, f.getPRsErr
 }
 
-func (f *fakePRClient) CreatePullRequest(org, repo, title, body, head, base string, canModify bool) (int, error) {
+func (f *fakePRClient) CreatePullRequest(_, _, _, _, _, _ string, _ bool) (int, error) {
 	f.createCalled = true
 	return f.createdNum, f.createErr
 }
 
-func (f *fakePRClient) ClosePullRequest(org, repo string, number int) error {
+func (f *fakePRClient) ClosePullRequest(_, _ string, number int) error {
 	f.closed = append(f.closed, number)
 	return nil
 }

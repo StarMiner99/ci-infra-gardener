@@ -25,7 +25,7 @@ type fakeFileGetter struct {
 	err     error
 }
 
-func (f fakeFileGetter) GetFile(org, repo, filepath, commit string) ([]byte, error) {
+func (f fakeFileGetter) GetFile(_, _, _, _ string) ([]byte, error) {
 	return f.content, f.err
 }
 
