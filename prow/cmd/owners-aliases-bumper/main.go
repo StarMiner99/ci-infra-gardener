@@ -18,6 +18,11 @@ func main() {
 
 	o := parseOptions()
 
+	prCfg, err := o.buildPRConfig()
+	if err != nil {
+		logrus.WithError(err).Fatal("Invalid PR/commit configuration!")
+	}
+
 	if o.applyChanges {
 		logrus.Info("Running in APPLY mode (--confirm set): changes will be pushed and PRs opened")
 	} else {
@@ -111,7 +116,7 @@ func main() {
 			}
 
 			// download repo
-			repoClient, err := forkAndCheckoutRepo(ghClient, commitFactory, orgName, repoName)
+			repoClient, err := forkAndCheckoutRepo(ghClient, commitFactory, orgName, repoName, prCfg)
 			if err != nil {
 				logrus.WithError(err).Errorf("Failed to initialize Git Client for %s/%s", orgName, repoName)
 				continue
@@ -127,13 +132,13 @@ func main() {
 			}
 
 			// commit and push changes
-			if err := commitAndPush(repoClient, pushFactory, orgName, repoName); err != nil {
+			if err := commitAndPush(repoClient, pushFactory, orgName, repoName, prCfg); err != nil {
 				logrus.WithError(err).Errorf("Commit and push failed repo: %s/%s", orgName, repoName)
 				continue
 			}
 
 			// open PR
-			id, err := findOrCreatePR(ghClient, orgName, repoName)
+			id, err := findOrCreatePR(ghClient, orgName, repoName, prCfg)
 			if err != nil {
 				logrus.WithError(err).Errorf("Opening PR failed on repo %s/%s", orgName, repoName)
 				continue

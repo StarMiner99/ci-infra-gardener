@@ -9,13 +9,13 @@ import (
 	"sigs.k8s.io/prow/pkg/github"
 )
 
-const commitTitle = "Update OWNERS_ALIASES from Peribolos config"
-const commitBody = `
+const defaultCommitTitle = "Update OWNERS_ALIASES from Peribolos config"
+const defaultCommitBody = `
 Automated update by owners-aliases-bumper. Alias membership was synced with the GitHub team definitions in the Peribolos config.
 `
-const prBranch = "owners-aliases-bumper"
-const prTitle = commitTitle
-const prBody = `
+const defaultPRBranch = "owners-aliases-bumper"
+const defaultPRTitle = defaultCommitTitle
+const defaultPRBody = `
 <!-- Please ensure that you do not include company internal information. -->
 
 **How to categorize this PR?**
@@ -43,7 +43,18 @@ approvers/reviewers don't drift from actual team membership.
 This PR was generated automatically.
 `
 
-func forkAndCheckoutRepo(ghClient github.Client, gitClient git.ClientFactory, orgName, repoName string) (git.RepoClient, error) {
+// prConfig holds the resolved commit/PR text used when applying changes. It is
+// built from options (see buildPRConfig) so the defaults above can be overridden
+// via flags.
+type prConfig struct {
+	branch      string
+	commitTitle string
+	commitBody  string
+	prTitle     string
+	prBody      string
+}
+
+func forkAndCheckoutRepo(ghClient github.Client, gitClient git.ClientFactory, orgName, repoName string, cfg prConfig) (git.RepoClient, error) {
 	log := logrus.WithField("repo", orgName+"/"+repoName)
 
 	log.Debug("Cloning repo (git client factory)")
@@ -65,12 +76,12 @@ func forkAndCheckoutRepo(ghClient github.Client, gitClient git.ClientFactory, or
 		return nil, fmt.Errorf("unable to checkout branch %s of repo %s/%s: %w", repoInfo.DefaultBranch, orgName, repoName, err)
 	}
 
-	log.Debugf("Creating new branch %q", prBranch)
-	if err := r.CheckoutNewBranch(prBranch); err != nil {
-		return nil, fmt.Errorf("unable to checkout new branch %s of repo %s/%s: %w", prBranch, orgName, repoName, err)
+	log.Debugf("Creating new branch %q", cfg.branch)
+	if err := r.CheckoutNewBranch(cfg.branch); err != nil {
+		return nil, fmt.Errorf("unable to checkout new branch %s of repo %s/%s: %w", cfg.branch, orgName, repoName, err)
 	}
 
-	log.Debugf("Repo checked out at %s on branch %q", r.Directory(), prBranch)
+	log.Debugf("Repo checked out at %s on branch %q", r.Directory(), cfg.branch)
 	return r, nil
 }
 
@@ -80,11 +91,11 @@ func forkAndCheckoutRepo(ghClient github.Client, gitClient git.ClientFactory, or
 // directory with ClientFromDir rather than re-cloning, so the commit is present when
 // we push. This split exists because GitClientFactory does not wire a GitUser, so a
 // single client would nil-panic in Commit.
-func commitAndPush(commitClient git.RepoClient, pushFactory git.ClientFactory, orgName, repoName string) error {
+func commitAndPush(commitClient git.RepoClient, pushFactory git.ClientFactory, orgName, repoName string, cfg prConfig) error {
 	log := logrus.WithField("repo", orgName+"/"+repoName)
 
-	log.Infof("Committing changes with title %q", commitTitle)
-	if err := commitClient.Commit(commitTitle, commitBody); err != nil {
+	log.Infof("Committing changes with title %q", cfg.commitTitle)
+	if err := commitClient.Commit(cfg.commitTitle, cfg.commitBody); err != nil {
 		return fmt.Errorf("failed to commit to repo %s/%s: %w", orgName, repoName, err)
 	}
 
@@ -94,8 +105,8 @@ func commitAndPush(commitClient git.RepoClient, pushFactory git.ClientFactory, o
 		return fmt.Errorf("failed to create push client for repo %s/%s: %w", orgName, repoName, err)
 	}
 
-	log.Infof("Pushing branch %q to central remote", prBranch)
-	if err := pushClient.PushToCentral(prBranch, true); err != nil {
+	log.Infof("Pushing branch %q to central remote", cfg.branch)
+	if err := pushClient.PushToCentral(cfg.branch, true); err != nil {
 		return fmt.Errorf("failed to push to repo %s/%s: %w", orgName, repoName, err)
 	}
 
@@ -111,7 +122,7 @@ type prClient interface {
 	ClosePullRequest(org, repo string, number int) error
 }
 
-func findOrCreatePR(ghClient prClient, orgName, repoName string) (int, error) {
+func findOrCreatePR(ghClient prClient, orgName, repoName string, cfg prConfig) (int, error) {
 	repoInfo, err := ghClient.GetRepo(orgName, repoName)
 
 	if err != nil {
@@ -126,13 +137,13 @@ func findOrCreatePR(ghClient prClient, orgName, repoName string) (int, error) {
 
 	// filter all prs that are not open and all prs that do not match our branch
 	prs = slices.DeleteFunc(prs, func(pr github.PullRequest) bool {
-		return pr.Head.Ref != prBranch || pr.State != "open"
+		return pr.Head.Ref != cfg.branch || pr.State != "open"
 	})
 
 	var prNum int
 	// no open PR
 	if len(prs) < 1 {
-		prNum, err = ghClient.CreatePullRequest(orgName, repoName, prTitle, prBody, prBranch, repoInfo.DefaultBranch, false)
+		prNum, err = ghClient.CreatePullRequest(orgName, repoName, cfg.prTitle, cfg.prBody, cfg.branch, repoInfo.DefaultBranch, false)
 		if err != nil {
 			return 0, fmt.Errorf("failed to create PR for repo %s/%s: %w", orgName, repoName, err)
 		}

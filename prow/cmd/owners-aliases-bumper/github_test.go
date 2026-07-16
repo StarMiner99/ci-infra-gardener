@@ -46,15 +46,24 @@ func (f *fakePRClient) ClosePullRequest(_, _ string, number int) error {
 // openPR builds an open PR on the bumper branch with the given number.
 func openPR(number int) github.PullRequest {
 	pr := github.PullRequest{Number: number, State: "open"}
-	pr.Head.Ref = prBranch
+	pr.Head.Ref = defaultPRBranch
 	return pr
+}
+
+// testPRConfig is the prConfig used across findOrCreatePR tests.
+var testPRConfig = prConfig{
+	branch:      defaultPRBranch,
+	commitTitle: defaultCommitTitle,
+	commitBody:  defaultCommitBody,
+	prTitle:     defaultPRTitle,
+	prBody:      defaultPRBody,
 }
 
 var _ = Describe("Github", func() {
 	Describe("#findOrCreatePR", func() {
 		It("creates a PR when none exists", func() {
 			f := &fakePRClient{createdNum: 42}
-			num, err := findOrCreatePR(f, "gardener", "ci-infra")
+			num, err := findOrCreatePR(f, "gardener", "ci-infra", testPRConfig)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(f.createCalled).To(BeTrue())
 			Expect(num).To(Equal(42))
@@ -62,7 +71,7 @@ var _ = Describe("Github", func() {
 
 		It("returns the existing PR number without creating one", func() {
 			f := &fakePRClient{prs: []github.PullRequest{openPR(7)}}
-			num, err := findOrCreatePR(f, "gardener", "ci-infra")
+			num, err := findOrCreatePR(f, "gardener", "ci-infra", testPRConfig)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(f.createCalled).To(BeFalse())
 			Expect(num).To(Equal(7))
@@ -78,7 +87,7 @@ var _ = Describe("Github", func() {
 				prs:        []github.PullRequest{closedOnBranch, otherBranch},
 				createdNum: 99,
 			}
-			num, err := findOrCreatePR(f, "gardener", "ci-infra")
+			num, err := findOrCreatePR(f, "gardener", "ci-infra", testPRConfig)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(f.createCalled).To(BeTrue(), "no matching open PR, so a new one is created")
 			Expect(num).To(Equal(99))
@@ -86,7 +95,7 @@ var _ = Describe("Github", func() {
 
 		It("keeps the first PR and closes the rest when several match", func() {
 			f := &fakePRClient{prs: []github.PullRequest{openPR(5), openPR(6), openPR(7)}}
-			num, err := findOrCreatePR(f, "gardener", "ci-infra")
+			num, err := findOrCreatePR(f, "gardener", "ci-infra", testPRConfig)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(num).To(Equal(5))
 			Expect(f.closed).To(ConsistOf(6, 7))
@@ -94,19 +103,19 @@ var _ = Describe("Github", func() {
 
 		It("propagates a GetRepo error", func() {
 			f := &fakePRClient{getRepoErr: errors.New("boom")}
-			_, err := findOrCreatePR(f, "gardener", "ci-infra")
+			_, err := findOrCreatePR(f, "gardener", "ci-infra", testPRConfig)
 			Expect(err).To(MatchError(ContainSubstring("failed to get Repo")))
 		})
 
 		It("propagates a GetPullRequests error", func() {
 			f := &fakePRClient{getPRsErr: errors.New("boom")}
-			_, err := findOrCreatePR(f, "gardener", "ci-infra")
+			_, err := findOrCreatePR(f, "gardener", "ci-infra", testPRConfig)
 			Expect(err).To(MatchError(ContainSubstring("failed to get PRs")))
 		})
 
 		It("propagates a CreatePullRequest error", func() {
 			f := &fakePRClient{createErr: errors.New("boom")}
-			_, err := findOrCreatePR(f, "gardener", "ci-infra")
+			_, err := findOrCreatePR(f, "gardener", "ci-infra", testPRConfig)
 			Expect(err).To(MatchError(ContainSubstring("failed to create PR")))
 		})
 	})

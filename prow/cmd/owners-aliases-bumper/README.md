@@ -30,6 +30,18 @@ Pass `--confirm` to actually push the branch and open PRs. In this mode the tool
 | `--skip-repos` | no | | Comma-separated list of repos to exclude, in `<org>/<repo>` format. By default every repo in the Peribolos config is managed. |
 | `--log-level` | no | `info` | Logging level (one of the standard `logrus` levels, e.g. `debug`, `info`, `warn`, `error`). |
 
+The commit and pull request text can be overridden. Titles and the branch name are inline strings; the commit and PR bodies can be given either inline or read from a file (the inline and `-file` variants are mutually exclusive). When none is set, a built-in default is used.
+
+| Flag | Required | Default | Description |
+| --- | --- | --- | --- |
+| `--pr-branch` | no | `owners-aliases-bumper` | Name of the branch pushed to the repo and used as the PR head. |
+| `--pr-title` | no | built-in | Title of the opened pull request. |
+| `--commit-title` | no | built-in | Title (subject line) of the commit. |
+| `--commit-body` | no | built-in | Commit body, inline. Mutually exclusive with `--commit-body-file`. |
+| `--commit-body-file` | no | | Path to a file whose contents are used as the commit body. Mutually exclusive with `--commit-body`. |
+| `--pr-body` | no | built-in | PR body, inline. Mutually exclusive with `--pr-body-file`. |
+| `--pr-body-file` | no | | Path to a file whose contents are used as the PR body. Mutually exclusive with `--pr-body`. |
+
 In addition, the tool accepts the standard Prow [`flagutil.GitHubOptions`](https://pkg.go.dev/sigs.k8s.io/prow/pkg/flagutil#GitHubOptions) flags for authenticating the GitHub and git clients (e.g. `--github-token-path` or GitHub App credentials, `--github-endpoint`).
 
 ## Examples
