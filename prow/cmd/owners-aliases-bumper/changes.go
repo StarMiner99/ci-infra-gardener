@@ -14,7 +14,7 @@ import (
 	"github.com/gardener/gardener-landscape-kit/pkg/apis/config/v1alpha1"
 	"github.com/gardener/gardener-landscape-kit/pkg/utils/meta"
 
-	yaml4 "go.yaml.in/yaml/v4"
+	"go.yaml.in/yaml/v4"
 )
 
 type change struct {
@@ -102,14 +102,14 @@ func writeChanges(aliasesPath string, aliasChanges map[string]change) error {
 	var aliasOriginalParsed, aliasModified ownersAliasesFile
 
 	// do it twice so we have 2 copies (could also do a deep of aliasOriginalParsed)
-	if err := yaml4.Unmarshal(aliasOriginalRaw, &aliasOriginalParsed); err != nil {
+	if err := yaml.Unmarshal(aliasOriginalRaw, &aliasOriginalParsed); err != nil {
 		return fmt.Errorf("failed parsing file at %s: %w", aliasesPath, err)
 	}
-	aliasOriginalParsedRaw, err := yaml4.Marshal(aliasOriginalParsed)
+	aliasOriginalParsedRaw, err := yaml.Marshal(aliasOriginalParsed)
 	if err != nil {
 		return fmt.Errorf("failed to parse original parsed yaml back to yaml... file: %s: %w", aliasesPath, err)
 	}
-	if err := yaml4.Unmarshal(aliasOriginalRaw, &aliasModified); err != nil {
+	if err := yaml.Unmarshal(aliasOriginalRaw, &aliasModified); err != nil {
 		return fmt.Errorf("failed parsing file at %s: %w", aliasesPath, err)
 	}
 
@@ -130,7 +130,7 @@ func writeChanges(aliasesPath string, aliasChanges map[string]change) error {
 		}
 	}
 
-	aliasModifiedParsedRaw, err := yaml4.Marshal(aliasModified)
+	aliasModifiedParsedRaw, err := yaml.Marshal(aliasModified)
 	if err != nil {
 		return fmt.Errorf("failed to parse modified aliases to yaml file: %s: %w", aliasesPath, err)
 	}
