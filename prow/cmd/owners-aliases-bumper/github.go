@@ -44,38 +44,62 @@ This PR was generated automatically.
 `
 
 func forkAndCheckoutRepo(ghClient github.Client, gitClient git.ClientFactory, orgName, repoName string) (git.RepoClient, error) {
+	log := logrus.WithField("repo", orgName+"/"+repoName)
+
+	log.Debug("Cloning repo (git client factory)")
 	r, err := gitClient.ClientFor(orgName, repoName)
 
 	if err != nil {
 		return nil, err
 	}
 
+	log.Debug("Fetching repo info to determine default branch")
 	repoInfo, err := ghClient.GetRepo(orgName, repoName)
 
 	if err != nil {
 		return nil, err
 	}
 
+	log.Debugf("Checking out default branch %q", repoInfo.DefaultBranch)
 	if err := r.Checkout(repoInfo.DefaultBranch); err != nil {
 		return nil, fmt.Errorf("unable to checkout branch %s of repo %s/%s: %w", repoInfo.DefaultBranch, orgName, repoName, err)
 	}
 
+	log.Debugf("Creating new branch %q", prBranch)
 	if err := r.CheckoutNewBranch(prBranch); err != nil {
 		return nil, fmt.Errorf("unable to checkout new branch %s of repo %s/%s: %w", prBranch, orgName, repoName, err)
 	}
 
+	log.Debugf("Repo checked out at %s on branch %q", r.Directory(), prBranch)
 	return r, nil
 }
 
-func commitAndPush(repoClient git.RepoClient, orgName, repoName string) error {
-	if err := repoClient.Commit(commitTitle, commitBody); err != nil {
+// commitAndPush commits the working-tree changes using commitClient (which carries
+// the commit-author identity) and then pushes via pushFactory, which is separately
+// authenticated. Both operate on the same checkout: pushFactory wraps commitClient's
+// directory with ClientFromDir rather than re-cloning, so the commit is present when
+// we push. This split exists because GitClientFactory does not wire a GitUser, so a
+// single client would nil-panic in Commit.
+func commitAndPush(commitClient git.RepoClient, pushFactory git.ClientFactory, orgName, repoName string) error {
+	log := logrus.WithField("repo", orgName+"/"+repoName)
+
+	log.Infof("Committing changes with title %q", commitTitle)
+	if err := commitClient.Commit(commitTitle, commitBody); err != nil {
 		return fmt.Errorf("failed to commit to repo %s/%s: %w", orgName, repoName, err)
 	}
 
-	if err := repoClient.PushToCentral(prBranch, true); err != nil {
+	// Wrap the same working tree with the authenticated factory to push.
+	pushClient, err := pushFactory.ClientFromDir(orgName, repoName, commitClient.Directory())
+	if err != nil {
+		return fmt.Errorf("failed to create push client for repo %s/%s: %w", orgName, repoName, err)
+	}
+
+	log.Infof("Pushing branch %q to central remote", prBranch)
+	if err := pushClient.PushToCentral(prBranch, true); err != nil {
 		return fmt.Errorf("failed to push to repo %s/%s: %w", orgName, repoName, err)
 	}
 
+	log.Debug("Commit and push complete")
 	return nil
 }
 

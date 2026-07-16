@@ -5,11 +5,16 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"sigs.k8s.io/prow/pkg/config/secret"
+	gitv2 "sigs.k8s.io/prow/pkg/git/v2"
 	"sigs.k8s.io/prow/pkg/logrusutil"
 )
 
 func main() {
 	logrusutil.ComponentInit()
+	logrus.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp: true,
+	})
 
 	o := parseOptions()
 
@@ -31,10 +36,41 @@ func main() {
 		logrus.WithError(err).Fatal("Failed to initialize GitHub client!")
 	}
 
-	gitClient, err := o.ghOpts.GitClientFactory("", nil, !o.applyChanges, false)
+	// pushFactory is fully authenticated (PAT or GitHub App) and is used only to
+	// push the branch to the remote.
+	pushFactory, err := o.ghOpts.GitClientFactory("", nil, !o.applyChanges, false)
 
 	if err != nil {
 		logrus.WithError(err).Fatal("Failed to initialize git client!")
+	}
+
+	// commitFactory carries the commit author identity (GitUser). GitClientFactory
+	// never wires GitUser, so repoClient.Commit would nil-panic without this. Commit
+	// is a purely local operation, so this factory needs no token and stays auth-agnostic.
+	// The authenticated pushFactory handles the networked push separately.
+	//
+	// Only built in apply mode: BotUser()/Email() require an authenticated client, and
+	// a dry run never commits, so building it unconditionally would break anonymous runs.
+	var commitFactory gitv2.ClientFactory
+	if o.applyChanges {
+		botUser, err := ghClient.BotUser()
+		if err != nil {
+			logrus.WithError(err).Fatal("Failed to get bot user for git commit identity!")
+		}
+		email, err := ghClient.Email()
+		if err != nil {
+			logrus.WithError(err).Fatal("Failed to get bot email for git commit identity!")
+		}
+
+		commitFactory, err = gitv2.NewClientFactory(
+			gitv2.WithGitUser(func() (name, gitEmail string, err error) {
+				return botUser.Name, email, nil
+			}),
+			gitv2.WithCensor(secret.Censor),
+		)
+		if err != nil {
+			logrus.WithError(err).Fatal("Failed to initialize commit git client!")
+		}
 	}
 
 	// build our available aliases from the teams information we have
@@ -75,7 +111,7 @@ func main() {
 			}
 
 			// download repo
-			repoClient, err := forkAndCheckoutRepo(ghClient, gitClient, orgName, repoName)
+			repoClient, err := forkAndCheckoutRepo(ghClient, commitFactory, orgName, repoName)
 			if err != nil {
 				logrus.WithError(err).Errorf("Failed to initialize Git Client for %s/%s", orgName, repoName)
 				continue
@@ -91,7 +127,7 @@ func main() {
 			}
 
 			// commit and push changes
-			if err := commitAndPush(repoClient, orgName, repoName); err != nil {
+			if err := commitAndPush(repoClient, pushFactory, orgName, repoName); err != nil {
 				logrus.WithError(err).Errorf("Commit and push failed repo: %s/%s", orgName, repoName)
 				continue
 			}
