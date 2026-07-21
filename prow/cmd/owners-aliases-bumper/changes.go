@@ -100,7 +100,7 @@ func deepCopyYaml(original []byte) ([]byte, error) {
 	return yaml.Marshal(originalParsed)
 }
 
-func writeChanges(aliasesPath string, aliasChanges map[string]change) error {
+func writeChanges(aliasesPath string, aliasChanges map[string]change) (err error) {
 	originalRaw, err := os.ReadFile(aliasesPath)
 	if err != nil {
 		return fmt.Errorf("unable to read file %s: %w", aliasesPath, err)
@@ -144,18 +144,19 @@ func writeChanges(aliasesPath string, aliasChanges map[string]change) error {
 	}
 
 	fo, err := os.Create(aliasesPath)
-
 	if err != nil {
 		return fmt.Errorf("failed to open file %s for writing: %w", aliasesPath, err)
 	}
+	defer func() {
+		if errC := fo.Close(); errC != nil && err == nil {
+			err = fmt.Errorf("failed closing file %s: %w", aliasesPath, errC)
+		}
+	}()
 
 	_, err = fo.Write(output)
 
 	if err != nil {
 		return fmt.Errorf("failed to write to file %s: %w", aliasesPath, err)
-	}
-	if err := fo.Close(); err != nil {
-		return fmt.Errorf("failed closing file %s: %w", aliasesPath, err)
 	}
 
 	return nil
