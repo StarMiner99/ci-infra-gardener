@@ -55,58 +55,50 @@ var _ = Describe("Changes", func() {
 			return f
 		}
 
-		It("returns (nil, false) when the repo has no OWNERS_ALIASES", func() {
+		It("returns nil when the repo has no OWNERS_ALIASES", func() {
 			gh := fakeFileGetter{err: &github.FileNotFound{}}
-			changes, changed := calculateAliasChanges(gh, newFullOrgAliases(), "gardener", "ci-infra")
+			changes := calculateAliasChanges(gh, newFullOrgAliases(), "gardener", "ci-infra")
 			Expect(changes).To(BeNil())
-			Expect(changed).To(BeFalse())
 		})
 
-		It("returns (nil, false) on a generic GetFile error", func() {
+		It("returns nil on a generic GetFile error", func() {
 			gh := fakeFileGetter{err: errors.New("boom")}
-			changes, changed := calculateAliasChanges(gh, newFullOrgAliases(), "gardener", "ci-infra")
+			changes := calculateAliasChanges(gh, newFullOrgAliases(), "gardener", "ci-infra")
 			Expect(changes).To(BeNil())
-			Expect(changed).To(BeFalse())
 		})
 
-		It("returns (nil, false) when the file cannot be parsed", func() {
+		It("returns nil when the file cannot be parsed", func() {
 			gh := fakeFileGetter{content: []byte("::: not yaml :::")}
-			changes, changed := calculateAliasChanges(gh, newFullOrgAliases(), "gardener", "ci-infra")
+			changes := calculateAliasChanges(gh, newFullOrgAliases(), "gardener", "ci-infra")
 			Expect(changes).To(BeNil())
-			Expect(changed).To(BeFalse())
 		})
 
-		It("reports changed=false when repo and local config already match", func() {
+		It("reports len(changes)=0 when repo and local config already match", func() {
 			gh := fakeFileGetter{content: []byte("aliases:\n  team-a:\n  - alice\n  - bob\n")}
-			changes, changed := calculateAliasChanges(gh, localConfig("team-a", "alice", "bob"), "gardener", "ci-infra")
-			Expect(changed).To(BeFalse())
-			Expect(changes).To(HaveKey("team-a"))
-			Expect(changes["team-a"].add).To(BeEmpty())
-			Expect(changes["team-a"].remove).To(BeEmpty())
+			changes := calculateAliasChanges(gh, localConfig("team-a", "alice", "bob"), "gardener", "ci-infra")
+			Expect(changes).To(BeEmpty())
 		})
 
 		It("computes members to add and remove", func() {
 			gh := fakeFileGetter{content: []byte("aliases:\n  team-a:\n  - alice\n  - carol\n")}
 			// local has alice+bob; repo has alice+carol => add bob, remove carol
-			changes, changed := calculateAliasChanges(gh, localConfig("team-a", "alice", "bob"), "gardener", "ci-infra")
-			Expect(changed).To(BeTrue())
+			changes := calculateAliasChanges(gh, localConfig("team-a", "alice", "bob"), "gardener", "ci-infra")
+			Expect(changes).ToNot(BeEmpty())
 			Expect(changes["team-a"].add).To(Equal(sets.New("bob")))
 			Expect(changes["team-a"].remove).To(Equal(sets.New("carol")))
 		})
 
 		It("skips aliases that do not exist in the local config", func() {
 			gh := fakeFileGetter{content: []byte("aliases:\n  unknown-team:\n  - alice\n")}
-			changes, changed := calculateAliasChanges(gh, localConfig("team-a", "alice"), "gardener", "ci-infra")
-			Expect(changed).To(BeFalse())
-			Expect(changes).ToNot(HaveKey("unknown-team"))
+			changes := calculateAliasChanges(gh, localConfig("team-a", "alice"), "gardener", "ci-infra")
+			Expect(changes).To(BeEmpty())
 		})
 
 		It("reports no change for an org that has no local teams", func() {
 			// getConfig lazily creates an empty config for the org, so every
 			// alias in the repo is skipped and nothing is reported as changed.
 			gh := fakeFileGetter{content: []byte("aliases:\n  team-a:\n  - alice\n")}
-			changes, changed := calculateAliasChanges(gh, newFullOrgAliases(), "org-with-no-teams", "repo")
-			Expect(changed).To(BeFalse())
+			changes := calculateAliasChanges(gh, newFullOrgAliases(), "org-with-no-teams", "repo")
 			Expect(changes).To(BeEmpty())
 		})
 
@@ -126,10 +118,8 @@ var _ = Describe("Changes", func() {
 				},
 			}, "")
 
-			changes, changed := calculateAliasChanges(gh, f, "gardener", "ci-infra")
-			Expect(changed).To(BeFalse(), "casing/@ differences must not be treated as changes")
-			Expect(changes["team-a"].add).To(BeEmpty())
-			Expect(changes["team-a"].remove).To(BeEmpty())
+			changes := calculateAliasChanges(gh, f, "gardener", "ci-infra")
+			Expect(changes).To(BeEmpty(), "casing/@ differences must not be treated as changes")
 		})
 
 		It("aggregates changes across multiple aliases in one repo", func() {
@@ -146,12 +136,11 @@ var _ = Describe("Changes", func() {
 			cfg.addMember("team-a", "bob")
 			cfg.addMember("team-b", "dave")
 
-			changes, changed := calculateAliasChanges(gh, f, "gardener", "ci-infra")
-			Expect(changed).To(BeTrue())
+			changes := calculateAliasChanges(gh, f, "gardener", "ci-infra")
+			Expect(changes).ToNot(BeEmpty())
 			Expect(changes["team-a"].add).To(Equal(sets.New("bob")))
 			Expect(changes["team-a"].remove).To(Equal(sets.New("carol")))
-			Expect(changes["team-b"].add).To(BeEmpty())
-			Expect(changes["team-b"].remove).To(BeEmpty())
+			Expect(changes).ToNot(HaveKey("team-b"))
 			Expect(changes).ToNot(HaveKey("team-c"))
 		})
 	})

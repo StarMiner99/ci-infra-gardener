@@ -32,7 +32,7 @@ type fileGetter interface {
 	GetFile(org, repo, filepath, commit string) ([]byte, error)
 }
 
-func calculateAliasChanges(ghClient fileGetter, localAliases *fullOrgAliases, orgName, repoName string) (map[string]change, bool) {
+func calculateAliasChanges(ghClient fileGetter, localAliases *fullOrgAliases, orgName, repoName string) map[string]change {
 	log := logrus.WithField("repo", orgName+"/"+repoName)
 
 	// get the aliases currently in the repo:
@@ -41,24 +41,23 @@ func calculateAliasChanges(ghClient fileGetter, localAliases *fullOrgAliases, or
 	var notFoundErr *github.FileNotFound
 
 	if errors.As(err, &notFoundErr) {
-		logrus.Infof("Repo %s/%s has no OWNER_ALIASES file skipping...", orgName, repoName)
-		return nil, false // repo does not have a OWNERS_ALIASES file nothing to do
+		logrus.Infof("Repo %s/%s has no OWNERS_ALIASES file skipping...", orgName, repoName)
+		return nil // repo does not have a OWNERS_ALIASES file nothing to do
 	}
 	if err != nil {
-		logrus.WithError(err).Errorf("Failed to get OWNER_ALIASES from %s/%s", orgName, repoName)
-		return nil, false // skip gracefully if failed
+		logrus.WithError(err).Errorf("Failed to get OWNERS_ALIASES from %s/%s", orgName, repoName)
+		return nil // skip gracefully if failed
 	}
 	log.Debugf("Fetched OWNERS_ALIASES (%d bytes)", len(raw))
 
 	aliases, err := repoowners.ParseAliasesConfig(raw)
 	if err != nil {
-		logrus.WithError(err).Errorf("Failed to parse OWNER_ALIASES from %s/%s", orgName, repoName)
-		return nil, false // skip
+		logrus.WithError(err).Errorf("Failed to parse OWNERS_ALIASES from %s/%s", orgName, repoName)
+		return nil // skip
 	}
 	log.Debugf("Parsed %d alias(es) from repo OWNERS_ALIASES", len(aliases))
 
 	changes := make(map[string]change)
-	changed := false
 
 	// compare all existing aliases with ours
 	for alias, members := range aliases {
@@ -72,21 +71,19 @@ func calculateAliasChanges(ghClient fileGetter, localAliases *fullOrgAliases, or
 		toBeAdded := localMembers.Difference(members)
 		toBeDeleted := members.Difference(localMembers)
 		if toBeAdded.Len() != 0 || toBeDeleted.Len() != 0 {
-			changed = true
+			changes[alias] = change{
+				add:    toBeAdded,
+				remove: toBeDeleted,
+			}
 			log.Debugf("Alias %q differs: repo=%v local=%v -> add=%v remove=%v",
 				alias, sets.List(members), sets.List(localMembers), sets.List(toBeAdded), sets.List(toBeDeleted))
 		} else {
 			log.Debugf("Alias %q already in sync (%d member(s))", alias, members.Len())
 		}
-
-		changes[alias] = change{
-			add:    toBeAdded,
-			remove: toBeDeleted,
-		}
 	}
 
-	log.Debugf("Comparison done: %d alias(es) tracked, changed=%t", len(changes), changed)
-	return changes, changed
+	log.Debugf("Comparison done: %d alias(es) tracked", len(changes))
+	return changes
 }
 
 // ownersAliasesFile models the OWNERS_ALIASES file. Only the string array

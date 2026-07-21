@@ -101,16 +101,13 @@ func main() {
 		for repoName := range orgConfig.Repos {
 			log := logrus.WithField("repo", orgName+"/"+repoName)
 			log.Debug("Calculating alias changes")
-			changes, changed := calculateAliasChanges(ghClient, cfg, orgName, repoName)
-			if changes == nil || !changed {
+			changes := calculateAliasChanges(ghClient, cfg, orgName, repoName)
+			if len(changes) <= 0 {
 				log.Info("No applicable changes, skipping")
 				continue // skip change if not applicable
 			}
 			log.Infof("Found changes for %d alias(es)", len(changes))
 			for alias, c := range changes {
-				if c.add.Len() == 0 && c.remove.Len() == 0 {
-					continue
-				}
 				log.Infof("  alias %q: add=%v remove=%v", alias, sets.List(c.add), sets.List(c.remove))
 			}
 
