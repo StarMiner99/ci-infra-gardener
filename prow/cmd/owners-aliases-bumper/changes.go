@@ -93,25 +93,28 @@ type ownersAliasesFile struct {
 	Aliases map[string][]string `yaml:"aliases"`
 }
 
-func writeChanges(aliasesPath string, aliasChanges map[string]change) error {
-	aliasOriginalRaw, err := os.ReadFile(aliasesPath)
+func deepCopyYaml(original []byte) ([]byte, error) {
+	var originalParsed ownersAliasesFile
+	if err := yaml.Unmarshal(original, &originalParsed); err != nil {
+		return nil, fmt.Errorf("failed unmarshaling for deepCopy: %w", err)
+	}
+	return yaml.Marshal(originalParsed)
+}
 
+func writeChanges(aliasesPath string, aliasChanges map[string]change) error {
+	originalRaw, err := os.ReadFile(aliasesPath)
 	if err != nil {
 		return fmt.Errorf("unable to read file %s: %w", aliasesPath, err)
 	}
 
-	var aliasOriginalParsed, aliasModified ownersAliasesFile
-
-	// do it twice so we have 2 copies (could also do a deep of aliasOriginalParsed)
-	if err := yaml.Unmarshal(aliasOriginalRaw, &aliasOriginalParsed); err != nil {
+	var aliasModified ownersAliasesFile
+	if err := yaml.Unmarshal(originalRaw, &aliasModified); err != nil {
 		return fmt.Errorf("failed parsing file at %s: %w", aliasesPath, err)
 	}
-	aliasOriginalParsedRaw, err := yaml.Marshal(aliasOriginalParsed)
+
+	originalMarshaled, err := deepCopyYaml(originalRaw)
 	if err != nil {
 		return fmt.Errorf("failed to parse original parsed yaml back to yaml... file: %s: %w", aliasesPath, err)
-	}
-	if err := yaml.Unmarshal(aliasOriginalRaw, &aliasModified); err != nil {
-		return fmt.Errorf("failed parsing file at %s: %w", aliasesPath, err)
 	}
 
 	// make modifications
@@ -131,12 +134,12 @@ func writeChanges(aliasesPath string, aliasChanges map[string]change) error {
 		}
 	}
 
-	aliasModifiedParsedRaw, err := yaml.Marshal(aliasModified)
+	modifiedMarshaled, err := yaml.Marshal(aliasModified)
 	if err != nil {
 		return fmt.Errorf("failed to parse modified aliases to yaml file: %s: %w", aliasesPath, err)
 	}
 
-	output, err := meta.ThreeWayMergeManifest(aliasOriginalParsedRaw, aliasModifiedParsedRaw, aliasOriginalRaw, v1alpha1.MergeModeHint)
+	output, err := meta.ThreeWayMergeManifest(originalMarshaled, modifiedMarshaled, originalRaw, v1alpha1.MergeModeHint)
 	if err != nil {
 		return fmt.Errorf("failed to merge new aliases with yaml file: %s: %w", aliasesPath, err)
 	}
