@@ -38,9 +38,8 @@ func calculateAliasChanges(ghClient fileGetter, localAliases *fullOrgAliases, or
 	// get the aliases currently in the repo:
 	log.Debug("Fetching OWNERS_ALIASES from repo default branch")
 	raw, err := ghClient.GetFile(orgName, repoName, "OWNERS_ALIASES", "") // empty commit ID for latest commit on default branch
-	var notFoundErr *github.FileNotFound
 
-	if errors.As(err, &notFoundErr) {
+	if _, ok := errors.AsType[*github.FileNotFound](err); ok {
 		logrus.Infof("Repo %s/%s has no OWNERS_ALIASES file skipping...", orgName, repoName)
 		return nil // repo does not have a OWNERS_ALIASES file nothing to do
 	}
