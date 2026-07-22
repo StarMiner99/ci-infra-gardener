@@ -13,13 +13,14 @@ import (
 	"sigs.k8s.io/prow/pkg/github"
 )
 
-const defaultCommitTitle = "Update OWNERS_ALIASES from Peribolos config"
-const defaultCommitBody = `
+const (
+	defaultCommitTitle = "Update OWNERS_ALIASES from Peribolos config"
+	defaultCommitBody  = `
 Automated update by owners-aliases-bumper. Alias membership was synced with the GitHub team definitions in the Peribolos config.
 `
-const defaultPRBranch = "owners-aliases-bumper"
-const defaultPRTitle = defaultCommitTitle
-const defaultPRBody = `
+	defaultPRBranch = "owners-aliases-bumper"
+	defaultPRTitle  = defaultCommitTitle
+	defaultPRBody   = `
 <!-- Please ensure that you do not include company internal information. -->
 
 **How to categorize this PR?**
@@ -46,6 +47,7 @@ approvers/reviewers don't drift from actual team membership.
 **Special notes for your reviewer**:
 This PR was generated automatically.
 `
+)
 
 // prConfig holds the resolved commit/PR text used when applying changes. It is
 // built from options (see buildPRConfig) so the defaults above can be overridden
@@ -63,14 +65,12 @@ func forkAndCheckoutRepo(ghClient github.Client, gitClient git.ClientFactory, or
 
 	log.Debug("Cloning repo (git client factory)")
 	r, err := gitClient.ClientFor(orgName, repoName)
-
 	if err != nil {
 		return nil, err
 	}
 
 	log.Debug("Fetching repo info to determine default branch")
 	repoInfo, err := ghClient.GetRepo(orgName, repoName)
-
 	if err != nil {
 		return nil, err
 	}
@@ -128,13 +128,11 @@ type prClient interface {
 
 func findOrCreatePR(ghClient prClient, orgName, repoName string, cfg prConfig) (int, error) {
 	repoInfo, err := ghClient.GetRepo(orgName, repoName)
-
 	if err != nil {
 		return 0, fmt.Errorf("failed to get Repo %s/%s: %w", orgName, repoName, err)
 	}
 
 	prs, err := ghClient.GetPullRequests(orgName, repoName)
-
 	if err != nil {
 		return 0, fmt.Errorf("failed to get PRs for repo %s/%s: %w", orgName, repoName, err)
 	}
@@ -145,19 +143,12 @@ func findOrCreatePR(ghClient prClient, orgName, repoName string, cfg prConfig) (
 	})
 
 	var prNum int
-	// no open PR
-	if len(prs) < 1 {
+	if len(prs) < 1 { // no open PR
 		prNum, err = ghClient.CreatePullRequest(orgName, repoName, cfg.prTitle, cfg.prBody, cfg.branch, repoInfo.DefaultBranch, false)
 		if err != nil {
 			return 0, fmt.Errorf("failed to create PR for repo %s/%s: %w", orgName, repoName, err)
 		}
-	}
-	// one open PR
-	if len(prs) == 1 {
-		prNum = prs[0].Number
-	}
-	// more than one open PR
-	if len(prs) > 1 {
+	} else { // one or more open PRs
 		prNum = prs[0].Number
 		// close all other PRs, someone must have opened a PR manually
 		for _, pr := range prs[1:] {

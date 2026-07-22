@@ -37,10 +37,8 @@ func removeExcludedRepos(orgs *org.FullConfig, excludedRepos []string) {
 		// warn the user if the config does not look right
 		if _, exists := orgs.Orgs[splitRepoString[0]]; !exists {
 			logrus.Warnf("Attempted to exclude %s however, organization %s is not defined in the Peribolos config, excluding it anyways!", excludedRepo, splitRepoString[0])
-		} else {
-			if _, exists := orgs.Orgs[splitRepoString[0]].Repos[splitRepoString[1]]; !exists {
-				logrus.Warnf("Attempted to exclude %s however, %s is not defined in the Peribolos config, excluding it anyways!", excludedRepo, splitRepoString[1])
-			}
+		} else if _, exists := orgs.Orgs[splitRepoString[0]].Repos[splitRepoString[1]]; !exists {
+			logrus.Warnf("Attempted to exclude %s however, %s is not defined in the Peribolos config, excluding it anyways!", excludedRepo, splitRepoString[1])
 		}
 
 		// remove repo from our config

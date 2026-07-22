@@ -39,11 +39,11 @@ func calculateAliasChanges(ghClient fileGetter, localAliases *fullOrgAliases, or
 	log.Debug("Fetching OWNERS_ALIASES from repo default branch")
 	raw, err := ghClient.GetFile(orgName, repoName, "OWNERS_ALIASES", "") // empty commit ID for latest commit on default branch
 
-	if _, ok := errors.AsType[*github.FileNotFound](err); ok {
-		logrus.Infof("Repo %s/%s has no OWNERS_ALIASES file skipping...", orgName, repoName)
-		return nil // repo does not have a OWNERS_ALIASES file nothing to do
-	}
 	if err != nil {
+		if _, ok := errors.AsType[*github.FileNotFound](err); ok {
+			logrus.Infof("Repo %s/%s has no OWNERS_ALIASES file skipping...", orgName, repoName)
+			return nil // repo does not have a OWNERS_ALIASES file nothing to do
+		}
 		logrus.WithError(err).Errorf("Failed to get OWNERS_ALIASES from %s/%s", orgName, repoName)
 		return nil // skip gracefully if failed
 	}
@@ -153,9 +153,7 @@ func writeChanges(aliasesPath string, aliasChanges map[string]change) (err error
 		}
 	}()
 
-	_, err = fo.Write(output)
-
-	if err != nil {
+	if _, err = fo.Write(output); err != nil {
 		return fmt.Errorf("failed to write to file %s: %w", aliasesPath, err)
 	}
 
